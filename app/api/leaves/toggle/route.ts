@@ -29,23 +29,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update saturdayLeave collection instead of leaves
-    const leaveRef = adminDb.collection('saturdayLeave').doc(date);
-    await leaveRef.set(
-      {
-        date,
-        isHoliday,
-        updatedAt: new Date().toISOString(),
-        updatedBy: user.uid,
-      },
-      { merge: true }
-    );
+    // NEW: Check if date is in the past
+    const selectedDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to midnight for accurate comparison
+    selectedDate.setHours(0, 0, 0, 0);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Saturday leave status updated',
-      data: { date, isHoliday },
-    });
+    if (selectedDate < today) {
+      return NextResponse.json(
+        { 
+          error: 'Cannot modify past dates',
+          message: 'You can only modify future Saturday leave status'
+        },
+        { status: 400 }
+      );
+    }
+
+    const leaveRef = adminDb.collection('saturdayLeave').doc(date);
+
+    // NEW: If toggling back to holiday (default state), DELETE the document
+    if (isHoliday) {
+      // Delete the document instead of updating it
+      await leaveRef.delete();
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Saturday marked as holiday (default state)',
+        data: { date, isHoliday, deleted: true },
+      });
+    } else {
+      // If marking as working day, create/update the document
+      await leaveRef.set(
+        {
+          date,
+          isHoliday: false, // Explicitly mark as working day
+          updatedAt: new Date().toISOString(),
+          updatedBy: user.uid,
+        },
+        { merge: true }
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: 'Saturday marked as working day',
+        data: { date, isHoliday: false },
+      });
+    }
   } catch (error: any) {
     console.error('Error toggling Saturday leave:', error);
     return NextResponse.json(

@@ -8,8 +8,9 @@ export default function Calendar() {
   const [calendarData, setCalendarData] = useState<CalendarData>({});
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalSaturdays: 0, holidays: 0, workingDays: 0 });
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Fetch calendar data on mount (from saturdayLeave collection)
+  // Fetch calendar data on mount
   useEffect(() => {
     fetchCalendarData();
   }, []);
@@ -43,6 +44,12 @@ export default function Calendar() {
     });
   }, [currentDate, calendarData]);
 
+  // Show toast notification
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const formatDate = (date: Date): string => {
     return date.toISOString().split('T')[0];
   };
@@ -64,26 +71,51 @@ export default function Calendar() {
     return saturdays;
   };
 
+  const isPastDate = (date: Date): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate < today;
+  };
+
   const toggleHoliday = async (date: Date) => {
+    // Check if date is in the past
+    if (isPastDate(date)) {
+      showToast('Cannot modify past dates. Only future dates can be changed.', 'error');
+      return;
+    }
+
     const dateStr = formatDate(date);
     const currentStatus = calendarData[dateStr]?.isHoliday ?? true; // Default is holiday
+    const newStatus = !currentStatus;
 
     // Optimistic update
-    setCalendarData(prev => ({
-      ...prev,
-      [dateStr]: {
-        date: dateStr,
-        isHoliday: !currentStatus,
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+    if (newStatus) {
+      // If toggling back to holiday, remove from state (will be deleted from DB)
+      const newData = { ...calendarData };
+      delete newData[dateStr];
+      setCalendarData(newData);
+    } else {
+      // If marking as working day, add to state
+      setCalendarData(prev => ({
+        ...prev,
+        [dateStr]: {
+          date: dateStr,
+          isHoliday: false,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+    }
 
     try {
       const response = await fetch('/api/leaves/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: dateStr, isHoliday: !currentStatus }),
+        body: JSON.stringify({ date: dateStr, isHoliday: newStatus }),
       });
+
+      const result = await response.json();
 
       if (!response.ok) {
         // Revert on error
@@ -95,6 +127,14 @@ export default function Calendar() {
             updatedAt: new Date().toISOString(),
           },
         }));
+        showToast(result.error || result.message || 'Failed to update', 'error');
+      } else {
+        // Show success message
+        if (result.data?.deleted) {
+          showToast('Saturday marked as holiday (default)', 'success');
+        } else {
+          showToast('Saturday marked as working day', 'success');
+        }
       }
     } catch (error) {
       console.error('Error toggling holiday:', error);
@@ -107,6 +147,7 @@ export default function Calendar() {
           updatedAt: new Date().toISOString(),
         },
       }));
+      showToast('Network error. Please try again.', 'error');
     }
   };
 
@@ -138,6 +179,26 @@ export default function Calendar() {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 animate-slide-in ${
+          toast.type === 'success' 
+            ? 'bg-green-500' 
+            : 'bg-red-500'
+        } text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3`}>
+          {toast.type === 'success' ? (
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          ) : (
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          )}
+          <span className="font-medium">{toast.message}</span>
+        </div>
+      )}
+
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
@@ -222,32 +283,50 @@ export default function Calendar() {
             {saturdays.map((saturday) => {
               const dateStr = formatDate(saturday);
               const isHoliday = calendarData[dateStr]?.isHoliday ?? true;
+              const isPast = isPastDate(saturday);
               
               return (
                 <button
                   key={dateStr}
                   onClick={() => toggleHoliday(saturday)}
+                  disabled={isPast}
                   className={`
-                    p-6 rounded-xl border-2 transition-all duration-200 transform hover:scale-105 active:scale-95
-                    ${isHoliday
+                    p-6 rounded-xl border-2 transition-all duration-200 transform 
+                    ${isPast 
+                      ? 'opacity-40 cursor-not-allowed bg-gray-100 border-gray-300' 
+                      : 'hover:scale-105 active:scale-95'
+                    }
+                    ${!isPast && isHoliday
                       ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-300 hover:border-green-400 shadow-md'
-                      : 'bg-gradient-to-br from-red-50 to-red-100 border-red-300 hover:border-red-400 shadow-md'
+                      : ''
+                    }
+                    ${!isPast && !isHoliday
+                      ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300 hover:border-red-400 shadow-md'
+                      : ''
                     }
                   `}
                 >
                   <div className="text-center">
-                    <div className={`text-3xl font-bold mb-2 ${isHoliday ? 'text-green-700' : 'text-red-700'}`}>
+                    <div className={`text-3xl font-bold mb-2 ${
+                      isPast ? 'text-gray-500' :
+                      isHoliday ? 'text-green-700' : 'text-red-700'
+                    }`}>
                       {saturday.getDate()}
                     </div>
-                    <div className={`text-xs font-semibold uppercase tracking-wide ${isHoliday ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`text-xs font-semibold uppercase tracking-wide ${
+                      isPast ? 'text-gray-500' :
+                      isHoliday ? 'text-green-600' : 'text-red-600'
+                    }`}>
                       Saturday
                     </div>
                     <div className={`mt-3 px-3 py-1 rounded-full text-xs font-bold ${
-                      isHoliday
+                      isPast 
+                        ? 'bg-gray-200 text-gray-600'
+                        : isHoliday
                         ? 'bg-green-200 text-green-800'
                         : 'bg-red-200 text-red-800'
                     }`}>
-                      {isHoliday ? '🎉 Holiday' : '💼 Working'}
+                      {isPast ? '🔒 Past' : isHoliday ? '🎉 Holiday' : '💼 Working'}
                     </div>
                   </div>
                 </button>
@@ -261,14 +340,20 @@ export default function Calendar() {
           <div className="flex flex-wrap gap-4 justify-center">
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 rounded bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-300"></div>
-              <span className="text-sm text-gray-700">Holiday (No Work)</span>
+              <span className="text-sm text-gray-700">Holiday (Default)</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 rounded bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-300"></div>
               <span className="text-sm text-gray-700">Working Day</span>
             </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 rounded bg-gray-100 border-2 border-gray-300"></div>
+              <span className="text-sm text-gray-700">Past Date (Locked)</span>
+            </div>
           </div>
-          <p className="text-center text-xs text-gray-500 mt-2">Click any Saturday to toggle its status</p>
+          <p className="text-center text-xs text-gray-500 mt-2">
+            Click future Saturdays to toggle. Past dates cannot be modified.
+          </p>
         </div>
       </div>
     </div>
