@@ -54,7 +54,7 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             Leave Calendar Manager
           </h1>
-          <p className="text-gray-600">Director Access Only</p>
+          <p className="text-gray-600">Admin Access Only</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -115,7 +115,7 @@ export default function LoginPage() {
                 Verifying...
               </span>
             ) : (
-              'Sign In as Director'
+              'Sign In'
             )}
           </button>
         </form>
