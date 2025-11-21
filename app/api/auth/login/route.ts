@@ -3,42 +3,30 @@ import { createSessionCookie } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { idToken } = await request.json();
-
-    if (!idToken) {
+    const { email, password } = await request.json();
+    
+    if (!email || !password) {
       return NextResponse.json(
-        { success: false, error: 'Missing idToken' },
+        { success: false, error: 'Missing email or password' },
         { status: 400 }
       );
     }
 
-    await createSessionCookie(idToken);
+    await createSessionCookie(email, password);
 
     return NextResponse.json({ success: true, message: 'Logged in successfully' });
   } catch (error: any) {
     console.error('Login error:', error);
-
-    // Handle user not found in Firestore
-    if (error.message === 'USER_NOT_FOUND') {
+    
+    // Handle invalid credentials
+    if (error.message === 'INVALID_CREDENTIALS') {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'User not found in system. Please contact administrator.',
-          code: 'USER_NOT_FOUND'
+          error: 'Invalid email or password.',
+          code: 'INVALID_CREDENTIALS'
         },
-        { status: 404 }
-      );
-    }
-
-    // Handle insufficient permissions error
-    if (error.message === 'INSUFFICIENT_PERMISSIONS') {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Access Denied: You do not have the required permissions to access this system.',
-          code: 'INSUFFICIENT_PERMISSIONS'
-        },
-        { status: 403 }
+        { status: 401 }
       );
     }
 
@@ -48,4 +36,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
