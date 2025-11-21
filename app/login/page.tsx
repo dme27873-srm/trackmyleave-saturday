@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -18,28 +16,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Sign in with Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const idToken = await userCredential.user.getIdToken();
-
-      // Create session cookie on server (will check role)
+      // Send credentials directly to the API for hardcoded validation
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle specific errors
-        if (data.code === 'USER_NOT_FOUND') {
-          throw new Error('Your account is not registered in the system. Please contact the administrator.');
+        if (data.code === 'INVALID_CREDENTIALS') {
+          throw new Error('Invalid email or password.');
         }
-        if (data.code === 'INSUFFICIENT_PERMISSIONS') {
-          throw new Error('Access Denied: Only users with Director role can access this system.');
-        }
-        throw new Error(data.error || 'Failed to create session');
+        throw new Error(data.error || 'Login failed');
       }
 
       router.push('/dashboard');
@@ -47,11 +37,6 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed. Please check your credentials.');
-      
-      // Sign out from Firebase if authorization failed
-      if (err.message.includes('Director') || err.message.includes('not registered')) {
-        await auth.signOut();
-      }
     } finally {
       setLoading(false);
     }
@@ -127,16 +112,14 @@ export default function LoginPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Verifying credentials...
+                Verifying...
               </span>
             ) : (
               'Sign In as Director'
             )}
           </button>
         </form>
-
       </div>
     </div>
   );
 }
-
