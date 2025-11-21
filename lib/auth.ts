@@ -74,3 +74,40 @@ export async function removeSession() {
   const cookieStore = await cookies();
   cookieStore.delete('session');
 }
+
+export async function getUserData(uid: string) {
+  try {
+    // Since you're using hardcoded credentials, return user data directly
+    if (uid === HARDCODED_USER.uid) {
+      return {
+        uid: HARDCODED_USER.uid,
+        email: HARDCODED_USER.email,
+        role: HARDCODED_USER.role,
+        name: 'Admin User',
+        employeeId: 'EMP001',
+        department: 'Administration'
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    return null;
+  }
+}
+
+export async function verifyDirectorRole(uid: string): Promise<boolean> {
+  try {
+    const userData = await getUserData(uid);
+    
+    // Check if user exists and has Director role
+    if (!userData || userData.role !== 'Director') {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error verifying director role:', error);
+    return false;
+  }
+}
