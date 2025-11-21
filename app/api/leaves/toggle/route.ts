@@ -5,11 +5,10 @@ import { adminDb } from '@/lib/firebaseAdmin';
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
-
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
+    
     // Verify user is Director
     const isDirector = await verifyDirectorRole(user.uid);
     
@@ -19,22 +18,24 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-
+    
     const { date, isHoliday } = await request.json();
-
+    
     if (!date || typeof isHoliday !== 'boolean') {
       return NextResponse.json(
         { error: 'Invalid request data' },
         { status: 400 }
       );
     }
-
-    // NEW: Check if date is in the past
-    const selectedDate = new Date(date);
+    
+    // FIX: Parse date in IST timezone
+    const [year, month, day] = date.split('-').map(Number);
+    const selectedDate = new Date(year, month - 1, day); // Creates date in local timezone
+    
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to midnight for accurate comparison
-    selectedDate.setHours(0, 0, 0, 0);
-
+    today.setHours(0, 0, 0, 0); // Reset to midnight IST
+    selectedDate.setHours(0, 0, 0, 0); // Reset to midnight IST
+    
     if (selectedDate < today) {
       return NextResponse.json(
         { 
@@ -44,12 +45,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
+    
     const leaveRef = adminDb.collection('saturdayLeave').doc(date);
-
-    // NEW: If toggling back to holiday (default state), DELETE the document
+    
+    // If toggling back to holiday (default state), DELETE the document
     if (isHoliday) {
-      // Delete the document instead of updating it
       await leaveRef.delete();
       
       return NextResponse.json({
@@ -62,13 +62,13 @@ export async function POST(request: NextRequest) {
       await leaveRef.set(
         {
           date,
-          isHoliday: false, // Explicitly mark as working day
+          isHoliday: false,
           updatedAt: new Date().toISOString(),
           updatedBy: user.uid,
         },
         { merge: true }
       );
-
+      
       return NextResponse.json({
         success: true,
         message: 'Saturday marked as working day',
@@ -83,4 +83,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
