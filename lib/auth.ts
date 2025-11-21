@@ -1,5 +1,12 @@
 import { cookies } from 'next/headers';
-import { adminAuth, adminDb } from './firebaseAdmin';
+
+// Hardcoded credentials
+const HARDCODED_USER = {
+  email: 'admin@srmorg.com',
+  password: 'eec@2025',
+  uid: 'hardcoded-admin-uid',
+  role: 'Director'
+};
 
 export async function getSession() {
   try {
@@ -13,70 +20,44 @@ export async function getSession() {
 export async function getCurrentUser() {
   const session = await getSession();
   if (!session) return null;
-
+  
   try {
-    const decodedIdToken = await adminAuth.verifySessionCookie(session, true);
-    const currentUser = await adminAuth.getUser(decodedIdToken.uid);
-    return currentUser;
-  } catch (error) {
-    return null;
-  }
-}
-
-// Get user data from Firestore (including role)
-export async function getUserData(uid: string) {
-  try {
-    const userDoc = await adminDb.collection('users').doc(uid).get();
+    // Parse the session to get user info
+    const userData = JSON.parse(session);
     
-    if (!userDoc.exists) {
+    // Verify session hasn't expired
+    if (userData.expiresAt && Date.now() > userData.expiresAt) {
       return null;
     }
-
-    return userDoc.data();
+    
+    return userData;
   } catch (error) {
-    console.error('Error fetching user data:', error);
     return null;
   }
 }
 
-// Get just the role
-export async function getUserRole(uid: string): Promise<string | null> {
-  const userData = await getUserData(uid);
-  return userData?.role || null;
-}
-
-// UPDATED: Check if user is Director
-export async function verifyDirectorRole(uid: string): Promise<boolean> {
-  const role = await getUserRole(uid);
-  return role === 'Director';
-}
-
-export async function createSessionCookie(idToken: string) {
+export async function createSessionCookie(email: string, password: string) {
   try {
-    // Verify the ID token first
-    const decodedIdToken = await adminAuth.verifyIdToken(idToken);
-    const uid = decodedIdToken.uid;
-
-    // Check if user exists in Firestore users collection
-    const userData = await getUserData(uid);
-    
-    if (!userData) {
-      throw new Error('USER_NOT_FOUND');
+    // Verify hardcoded credentials
+    if (email !== HARDCODED_USER.email || password !== HARDCODED_USER.password) {
+      throw new Error('INVALID_CREDENTIALS');
     }
-
-    // Check if user has Director role
-    const isDirector = await verifyDirectorRole(uid);
     
-    if (!isDirector) {
-      throw new Error('INSUFFICIENT_PERMISSIONS');
-    }
-
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
+    
+    // Create session data
+    const sessionData = {
+      uid: HARDCODED_USER.uid,
+      email: HARDCODED_USER.email,
+      role: HARDCODED_USER.role,
+      expiresAt: Date.now() + expiresIn
+    };
+    
+    const sessionCookie = JSON.stringify(sessionData);
     
     const cookieStore = await cookies();
     cookieStore.set('session', sessionCookie, {
-      maxAge: expiresIn,
+      maxAge: expiresIn / 1000, // maxAge is in seconds
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -93,4 +74,3 @@ export async function removeSession() {
   const cookieStore = await cookies();
   cookieStore.delete('session');
 }
-
