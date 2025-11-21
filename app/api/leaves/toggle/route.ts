@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, verifyDirectorRole } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { adminDb } from '@/lib/firebaseAdmin';
 
 export async function POST(request: NextRequest) {
@@ -9,10 +9,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Verify user is Director
-    const isDirector = await verifyDirectorRole(user.uid);
-    
-    if (!isDirector) {
+    // Verify user is Director (check role from session)
+    if (user.role !== 'Director') {
       return NextResponse.json(
         { error: 'Only Directors can modify Saturday leave status' },
         { status: 403 }
