@@ -1,19 +1,9 @@
 import { NextResponse } from 'next/server';
-import { removeSession, getSession } from '@/lib/auth';
-import { adminAuth } from '@/lib/firebaseAdmin';
+import { removeSession } from '@/lib/auth';
 
 export async function POST() {
   try {
-    const session = await getSession();
-    
-    if (session) {
-      // Revoke all refresh tokens
-      const decodedIdToken = await adminAuth.verifySessionCookie(session);
-      await adminAuth.revokeRefreshTokens(decodedIdToken.sub);
-    }
-
     await removeSession();
-
     return NextResponse.json({ success: true, message: 'Logged out successfully' });
   } catch (error: any) {
     console.error('Logout error:', error);
